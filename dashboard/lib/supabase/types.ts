@@ -87,28 +87,33 @@ export interface Score {
   computed_at: string | null;
 }
 
+/**
+ * Insert/Update are declared for shape completeness only. This app never
+ * mutates: the publishable key carries the `anon` role, which the rr_* RLS
+ * policies restrict to SELECT, so any write is rejected at the database.
+ */
 export interface Database {
   public: {
     Tables: {
       rr_hazard_zones: {
         Row: HazardZone;
-        Insert: never;
-        Update: never;
+        Insert: Omit<HazardZone, "id" | "created_at">;
+        Update: Partial<HazardZone>;
       };
       rr_safe_sites: {
         Row: SafeSite;
-        Insert: never;
-        Update: never;
+        Insert: Omit<SafeSite, "id" | "created_at">;
+        Update: Partial<SafeSite>;
       };
       rr_habitations: {
         Row: Habitation;
-        Insert: never;
-        Update: never;
+        Insert: Omit<Habitation, "id" | "created_at">;
+        Update: Partial<Habitation>;
       };
       rr_scores: {
         Row: Score;
-        Insert: never;
-        Update: never;
+        Insert: Omit<Score, "id" | "computed_at">;
+        Update: Partial<Score>;
       };
     };
     Views: Record<never, never>;
