@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { HabitationPanel } from "@/components/habitation-panel";
 import { MapLegend } from "@/components/map-legend";
+import { PriorityList } from "@/components/priority-list";
+import type { SortKey } from "@/components/priority-list";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { DataSource } from "@/lib/supabase/types";
 
@@ -25,6 +27,7 @@ const HazardMap = dynamic(
 export function DashboardShell() {
   const [source] = useState<DataSource>("synthetic");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("rank");
 
   const view = useDashboardData(source);
 
@@ -79,6 +82,16 @@ export function DashboardShell() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
+          <aside className="border-subtle bg-panel w-64 shrink-0 border-r">
+            <PriorityList
+              ranked={view.ranked}
+              selectedId={selectedId}
+              sortKey={sortKey}
+              onSortChange={setSortKey}
+              onSelect={setSelectedId}
+            />
+          </aside>
+
           <main className="relative min-w-0 flex-1">
             <HazardMap
               hazardZones={view.hazardZones}
