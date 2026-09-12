@@ -51,6 +51,11 @@ interface HazardMapProps {
   ranked: ScoredHabitation[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /**
+   * What-if hazard multiplier. Scales the `intensity` feature property, which
+   * the existing colour/opacity expressions already read — no paint changes.
+   */
+  intensityMultiplier?: number;
 }
 
 export function HazardMap({
@@ -59,6 +64,7 @@ export function HazardMap({
   ranked,
   selectedId,
   onSelect,
+  intensityMultiplier = 1,
 }: HazardMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -80,8 +86,12 @@ export function HazardMap({
   }, [onSelect]);
 
   const hazardData = useMemo(
-    () => hazardZonesToGeoJSON(hazardZones) as unknown as AnyCollection,
-    [hazardZones],
+    () =>
+      hazardZonesToGeoJSON(
+        hazardZones,
+        intensityMultiplier,
+      ) as unknown as AnyCollection,
+    [hazardZones, intensityMultiplier],
   );
   const safeData = useMemo(
     () => safeSitesToGeoJSON(safeSites) as unknown as AnyCollection,

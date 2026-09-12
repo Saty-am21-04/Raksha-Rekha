@@ -16,7 +16,10 @@ import type { HazardZone, SafeSite } from "@/lib/supabase/types";
 export interface HazardProps {
   id: string;
   hazard_type: string;
+  /** Effective intensity after the what-if multiplier, clamped to 1–10. */
   intensity: number;
+  /** Intensity as stored, so a simulation can be compared to the baseline. */
+  base_intensity: number;
   source: string;
   event_label: string | null;
 }
@@ -41,13 +44,27 @@ export interface HabitationProps {
   selected: boolean;
 }
 
+/**
+ * `intensityMultiplier` lets the what-if slider drive the map without touching
+ * any layer paint: the existing colour and opacity expressions already read
+ * `intensity`, so scaling it here is enough to re-render the zones.
+ *
+ * Clamped to 1–10 to match the CHECK on rr_hazard_zones.intensity and the
+ * clamp inside the scoring model, so the map and the scores saturate together.
+ */
 export function hazardZonesToGeoJSON(
   zones: HazardZone[],
+  intensityMultiplier = 1,
 ): FeatureCollection<Polygon, HazardProps> {
   return {
     type: "FeatureCollection",
-    features: zones.map(
-      (zone): Feature<Polygon, HazardProps> => ({
+    features: zones.map((zone): Feature<Polygon, HazardProps> => {
+      const scaled = Math.min(
+        10,
+        Math.max(1, Math.round(zone.intensity * intensityMultiplier)),
+      );
+
+      return {
         type: "Feature",
         id: zone.id,
         // Strip the legacy `crs` member; Mapbox assumes WGS84 anyway.
@@ -55,12 +72,13 @@ export function hazardZonesToGeoJSON(
         properties: {
           id: zone.id,
           hazard_type: zone.hazard_type,
-          intensity: zone.intensity,
+          intensity: scaled,
+          base_intensity: zone.intensity,
           source: zone.source,
           event_label: zone.event_label,
         },
-      }),
-    ),
+      };
+    }),
   };
 }
 

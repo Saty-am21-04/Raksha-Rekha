@@ -6,6 +6,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BacktestBanner } from "@/components/backtest-banner";
 import { BacktestToggle } from "@/components/backtest-toggle";
 import { HabitationPanel } from "@/components/habitation-panel";
+import {
+  IntensitySlider,
+  SLIDER_BASELINE,
+  sliderToMultiplier,
+} from "@/components/intensity-slider";
 import { MapLegend } from "@/components/map-legend";
 import { PriorityList } from "@/components/priority-list";
 import type { SortKey } from "@/components/priority-list";
@@ -34,12 +39,20 @@ export function DashboardShell() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [mobileTab, setMobileTab] = useState<MobileTab>("map");
+  const [sliderValue, setSliderValue] = useState(SLIDER_BASELINE);
 
-  const view = useDashboardData(source);
+  const intensityMultiplier = sliderToMultiplier(sliderValue);
+  const view = useDashboardData(source, intensityMultiplier);
 
   const selected = useMemo(
     () => view.ranked.find((r) => r.id === selectedId) ?? null,
     [view.ranked, selectedId],
+  );
+
+  /** Live feedback for the slider: how many settlements now sit in a zone. */
+  const atRiskCount = useMemo(
+    () => view.ranked.filter((r) => r.detail.containingZones.length > 0).length,
+    [view.ranked],
   );
 
   const clearSelection = useCallback(() => setSelectedId(null), []);
@@ -173,28 +186,40 @@ export function DashboardShell() {
             </aside>
 
             <main
-              className={`relative min-w-0 flex-1 ${
-                mobileTab === "map" ? "block" : "hidden"
-              } md:block`}
+              className={`flex min-w-0 flex-1 flex-col ${
+                mobileTab === "map" ? "flex" : "hidden"
+              } md:flex`}
             >
-              <HazardMap
-                hazardZones={view.hazardZones}
-                safeSites={view.safeSites}
-                ranked={view.ranked}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
+              <IntensitySlider
+                value={sliderValue}
+                onChange={setSliderValue}
+                onReset={() => setSliderValue(SLIDER_BASELINE)}
+                atRiskCount={atRiskCount}
               />
 
-              {/* Legend would crowd a phone viewport, so it starts at md. */}
-              <div className="absolute bottom-8 left-3 hidden w-52 md:block">
-                <MapLegend total={view.ranked.length} />
-              </div>
+              <div className="relative min-h-0 flex-1">
+                <HazardMap
+                  hazardZones={view.hazardZones}
+                  safeSites={view.safeSites}
+                  ranked={view.ranked}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  intensityMultiplier={intensityMultiplier}
+                />
 
-              {view.status === "loading" && (
-                <div className="border-subtle bg-panel/95 text-muted absolute left-1/2 top-3 -translate-x-1/2 rounded-md border px-3 py-1.5 text-xs backdrop-blur">
-                  Loading Wayanad dataset…
+                {/* Legend would crowd a phone viewport, so it starts at md. */}
+                <div className="absolute bottom-8 left-3 hidden w-52 md:block">
+                  <MapLegend total={view.ranked.length} />
                 </div>
-              )}
+
+                {view.status === "loading" && (
+                  <div className="border-subtle bg-panel/95 text-muted absolute left-1/2 top-3 -translate-x-1/2 rounded-md border px-3 py-1.5 text-xs backdrop-blur">
+                    {view.isRecomputing
+                      ? `Computing ${source} scores…`
+                      : `Loading ${source} dataset…`}
+                  </div>
+                )}
+              </div>
             </main>
 
             {selected && (
