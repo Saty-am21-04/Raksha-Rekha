@@ -137,8 +137,12 @@
     border-color: var(--color-border);
   }
 
+  html {
+    background-color: #060B10;
+  }
+
   body {
-    background-color: var(--color-background);
+    background-color: #060B10;
     color: var(--color-foreground);
     font-family: "Suisse Intl", -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
