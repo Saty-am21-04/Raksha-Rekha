@@ -2,7 +2,7 @@
 
 import type { FeatureCollection, Geometry } from "geojson";
 import mapboxgl from "mapbox-gl";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { env } from "@/lib/env";
 import { bboxOf, toLngLat } from "@/lib/geo";
@@ -37,6 +37,14 @@ const LAYERS = {
   habitationSelected: "habitation-selected",
 } as const;
 
+type AnyCollection = FeatureCollection<Geometry, never>;
+
+interface LayerData {
+  hazard: AnyCollection;
+  safe: AnyCollection;
+  habitation: AnyCollection;
+}
+
 interface HazardMapProps {
   hazardZones: HazardZone[];
   safeSites: SafeSite[];
@@ -55,28 +63,52 @@ export function HazardMap({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
-  const [styleReady, setStyleReady] = useState(false);
 
-  // Keep the newest onSelect in a ref so the click handler can stay registered
-  // once for the map's lifetime instead of rebinding on every render.
+  /**
+   * Tracks whether *this* map instance finished building its layers. It is only
+   * ever read for behaviour that is safe to skip and retry (framing, easing) —
+   * never to gate style mutations, since a boolean can't distinguish one map
+   * instance from another across a StrictMode remount.
+   */
+  const [layersReady, setLayersReady] = useState(false);
+
+  // Latest values the map's own callbacks need, without re-running the setup
+  // effect and tearing the map down.
   const onSelectRef = useRef(onSelect);
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
 
   const hazardData = useMemo(
-    () => hazardZonesToGeoJSON(hazardZones),
+    () => hazardZonesToGeoJSON(hazardZones) as unknown as AnyCollection,
     [hazardZones],
   );
-  const safeData = useMemo(() => safeSitesToGeoJSON(safeSites), [safeSites]);
+  const safeData = useMemo(
+    () => safeSitesToGeoJSON(safeSites) as unknown as AnyCollection,
+    [safeSites],
+  );
   const habitationData = useMemo(
-    () => habitationsToGeoJSON(ranked, selectedId),
+    () =>
+      habitationsToGeoJSON(ranked, selectedId) as unknown as AnyCollection,
     [ranked, selectedId],
   );
 
-  /* ---------- create the map once ---------- */
+  /**
+   * Seeded with the first render's collections so the map's load callback has
+   * something to build from even before the sync effect below has run.
+   */
+  const dataRef = useRef<LayerData>({
+    hazard: hazardData,
+    safe: safeData,
+    habitation: habitationData,
+  });
   useEffect(() => {
-    if (mapRef.current || !containerRef.current) return;
+    dataRef.current = { hazard: hazardData, safe: safeData, habitation: habitationData };
+  }, [hazardData, safeData, habitationData]);
+
+  /* ---------- create the map, and build layers from its own load event ---------- */
+  useEffect(() => {
+    if (!containerRef.current) return;
 
     mapboxgl.accessToken = env.mapboxToken;
 
@@ -87,6 +119,15 @@ export function HazardMap({
       fitBoundsOptions: { padding: 48 },
       attributionControl: false,
     });
+    mapRef.current = map;
+
+    const popup = new mapboxgl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+      maxWidth: "240px",
+    });
+    popupRef.current = popup;
 
     map.addControl(
       new mapboxgl.NavigationControl({ showCompass: false }),
@@ -98,22 +139,23 @@ export function HazardMap({
     );
     map.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left");
 
-    popupRef.current = new mapboxgl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 12,
-      maxWidth: "240px",
-    });
-
-    map.on("load", () => setStyleReady(true));
-    mapRef.current = map;
+    // Everything that mutates the style happens here, where the style is
+    // guaranteed loaded for THIS instance.
+    const onLoad = () => {
+      installLayers(map, dataRef.current);
+      installInteractions(map, popup, onSelectRef);
+      setLayersReady(true);
+    };
+    map.on("load", onLoad);
 
     return () => {
-      popupRef.current?.remove();
-      popupRef.current = null;
+      map.off("load", onLoad);
+      popup.remove();
+      // remove() tears down every listener and source on this instance.
       map.remove();
       mapRef.current = null;
-      setStyleReady(false);
+      popupRef.current = null;
+      setLayersReady(false);
     };
   }, []);
 
@@ -122,230 +164,33 @@ export function HazardMap({
     const node = containerRef.current;
     if (!node) return;
 
-    const observer = new ResizeObserver(() => mapRef.current?.resize());
+    const observer = new ResizeObserver(() => {
+      // Skip while hidden (mobile tab switch) so the canvas isn't sized to 0.
+      if (node.clientWidth === 0 || node.clientHeight === 0) return;
+      mapRef.current?.resize();
+    });
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
 
-  /* ---------- add sources and layers after style load ---------- */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !styleReady) return;
-
-    if (!map.getSource(SOURCES.hazard)) {
-      map.addSource(SOURCES.hazard, { type: "geojson", data: hazardData });
-      map.addSource(SOURCES.safe, { type: "geojson", data: safeData });
-      map.addSource(SOURCES.habitation, {
-        type: "geojson",
-        data: habitationData,
-      });
-
-      // Hazard polygons sit underneath the point layers.
-      map.addLayer({
-        id: LAYERS.hazardFill,
-        type: "fill",
-        source: SOURCES.hazard,
-        paint: {
-          "fill-color": mapExpressions.hazardColor as never,
-          "fill-opacity": mapExpressions.hazardOpacity as never,
-        },
-      });
-
-      map.addLayer({
-        id: LAYERS.hazardOutline,
-        type: "line",
-        source: SOURCES.hazard,
-        paint: {
-          "line-color": mapExpressions.hazardColor as never,
-          "line-width": 1.2,
-          "line-opacity": 0.9,
-        },
-      });
-
-      // Safe sites: blue, area scaled by capacity_max.
-      map.addLayer({
-        id: LAYERS.safeSites,
-        type: "circle",
-        source: SOURCES.safe,
-        paint: {
-          "circle-radius": ["get", "radius"],
-          "circle-color": "#3f8fd9",
-          "circle-opacity": 0.28,
-          "circle-stroke-color": "#5fa8ea",
-          "circle-stroke-width": 1.5,
-          "circle-stroke-opacity": 0.95,
-        },
-      });
-
-      // Habitations: colour ramped by priority_rank.
-      map.addLayer({
-        id: LAYERS.habitations,
-        type: "circle",
-        source: SOURCES.habitation,
-        paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            9,
-            3.5,
-            13,
-            6,
-            16,
-            9,
-          ],
-          "circle-color": mapExpressions.priorityColor as never,
-          "circle-stroke-color": "#0a0a0a",
-          "circle-stroke-width": 1,
-        },
-      });
-
-      // Selection ring, driven by the `selected` feature property.
-      map.addLayer({
-        id: LAYERS.habitationSelected,
-        type: "circle",
-        source: SOURCES.habitation,
-        filter: ["==", ["get", "selected"], true],
-        paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            9,
-            8,
-            13,
-            12,
-            16,
-            16,
-          ],
-          "circle-color": "rgba(0,0,0,0)",
-          "circle-stroke-color": "#d99b3f",
-          "circle-stroke-width": 2.5,
-        },
-      });
-    }
-
-    /* ---------- interactions ---------- */
-    const popup = popupRef.current;
-
-    const selectFeature = (e: mapboxgl.MapLayerMouseEvent) => {
-      const id = e.features?.[0]?.properties?.id;
-      if (typeof id === "string") onSelectRef.current(id);
-    };
-
-    // Clicking empty map clears the selection; layer handlers stop propagation
-    // by running first and setting a flag on the original event.
-    const clearSelection = (e: mapboxgl.MapMouseEvent) => {
-      const hits = map.queryRenderedFeatures(e.point, {
-        layers: [LAYERS.habitations],
-      });
-      if (hits.length === 0) onSelectRef.current(null);
-    };
-
-    const showPointer = () => {
-      map.getCanvas().style.cursor = "pointer";
-    };
-    const hidePointer = () => {
-      map.getCanvas().style.cursor = "";
-      popup?.remove();
-    };
-
-    const habitationHover = (e: mapboxgl.MapLayerMouseEvent) => {
-      showPointer();
-      const p = e.features?.[0]?.properties;
-      if (!p || !popup) return;
-      popup
-        .setLngLat(e.lngLat)
-        .setHTML(
-          `<strong>${escapeHtml(String(p.name))}</strong><br/>` +
-            `<span style="color:#8a8a8a">Rank</span> ` +
-            `<span style="color:#d99b3f">#${p.priority_rank ?? "—"}</span> · ` +
-            `<span style="color:#8a8a8a">pop</span> ${Number(p.population).toLocaleString("en-IN")}`,
-        )
-        .addTo(map);
-    };
-
-    const safeHover = (e: mapboxgl.MapLayerMouseEvent) => {
-      showPointer();
-      const p = e.features?.[0]?.properties;
-      if (!p || !popup) return;
-      popup
-        .setLngLat(e.lngLat)
-        .setHTML(
-          `<strong>${escapeHtml(String(p.name))}</strong><br/>` +
-            `<span style="color:#8a8a8a">capacity</span> ` +
-            `<span style="color:#5fa8ea">${Number(p.capacity_max).toLocaleString("en-IN")}</span>` +
-            (p.infra_score === null
-              ? ""
-              : ` · <span style="color:#8a8a8a">infra</span> ${p.infra_score}`),
-        )
-        .addTo(map);
-    };
-
-    const hazardHover = (e: mapboxgl.MapLayerMouseEvent) => {
-      const p = e.features?.[0]?.properties;
-      if (!p || !popup) return;
-      const label = p.event_label ? `<br/><em>${escapeHtml(String(p.event_label))}</em>` : "";
-      popup
-        .setLngLat(e.lngLat)
-        .setHTML(
-          `<strong style="text-transform:capitalize">${escapeHtml(String(p.hazard_type).replace(/_/g, " "))}</strong><br/>` +
-            `<span style="color:#8a8a8a">intensity</span> ` +
-            `<span style="color:#d99b3f">${p.intensity}/10</span>${label}`,
-        )
-        .addTo(map);
-    };
-
-    map.on("click", LAYERS.habitations, selectFeature);
-    map.on("click", clearSelection);
-    map.on("mousemove", LAYERS.habitations, habitationHover);
-    map.on("mouseleave", LAYERS.habitations, hidePointer);
-    map.on("mousemove", LAYERS.safeSites, safeHover);
-    map.on("mouseleave", LAYERS.safeSites, hidePointer);
-    map.on("mousemove", LAYERS.hazardFill, hazardHover);
-    map.on("mouseleave", LAYERS.hazardFill, hidePointer);
-
-    return () => {
-      map.off("click", LAYERS.habitations, selectFeature);
-      map.off("click", clearSelection);
-      map.off("mousemove", LAYERS.habitations, habitationHover);
-      map.off("mouseleave", LAYERS.habitations, hidePointer);
-      map.off("mousemove", LAYERS.safeSites, safeHover);
-      map.off("mouseleave", LAYERS.safeSites, hidePointer);
-      map.off("mousemove", LAYERS.hazardFill, hazardHover);
-      map.off("mouseleave", LAYERS.hazardFill, hidePointer);
-    };
-  }, [styleReady, hazardData, safeData, habitationData]);
-
   /* ---------- push data updates ---------- */
-  const setData = useCallback(
-    <G extends Geometry, P>(sourceId: string, data: FeatureCollection<G, P>) => {
-      const source = mapRef.current?.getSource(sourceId);
-      if (!source || source.type !== "geojson") return;
-      // Mapbox's setData signature wants the loose GeoJSON type; our narrower
-      // collections are structurally compatible.
-      source.setData(data as unknown as FeatureCollection);
-    },
-    [],
-  );
+  useEffect(() => {
+    pushData(mapRef.current, SOURCES.hazard, hazardData);
+  }, [layersReady, hazardData]);
 
   useEffect(() => {
-    if (styleReady) setData(SOURCES.hazard, hazardData);
-  }, [styleReady, hazardData, setData]);
+    pushData(mapRef.current, SOURCES.safe, safeData);
+  }, [layersReady, safeData]);
 
   useEffect(() => {
-    if (styleReady) setData(SOURCES.safe, safeData);
-  }, [styleReady, safeData, setData]);
-
-  useEffect(() => {
-    if (styleReady) setData(SOURCES.habitation, habitationData);
-  }, [styleReady, habitationData, setData]);
+    pushData(mapRef.current, SOURCES.habitation, habitationData);
+  }, [layersReady, habitationData]);
 
   /* ---------- frame the data once it arrives ---------- */
   const framedRef = useRef(false);
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !styleReady || framedRef.current) return;
+    if (!map || !layersReady || framedRef.current) return;
     if (ranked.length === 0 && hazardZones.length === 0) return;
 
     const points = [
@@ -367,22 +212,21 @@ export function HazardMap({
       { padding: 56, duration: 0 },
     );
     framedRef.current = true;
-  }, [styleReady, ranked, safeSites, hazardZones]);
+  }, [layersReady, ranked, safeSites, hazardZones]);
 
   /* ---------- ease to a selection made elsewhere (list, panel) ---------- */
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !styleReady || !selectedId) return;
+    if (!map || !layersReady || !selectedId) return;
 
     const target = ranked.find((r) => r.id === selectedId);
     if (!target) return;
 
     const { lng, lat } = toLngLat(target.geom);
-    // Only move if the point isn't already comfortably in view.
     if (!map.getBounds()?.contains([lng, lat])) {
       map.easeTo({ center: [lng, lat], duration: 600 });
     }
-  }, [selectedId, ranked, styleReady]);
+  }, [selectedId, ranked, layersReady]);
 
   return (
     <div
@@ -392,6 +236,202 @@ export function HazardMap({
       aria-label="Hazard and relocation map for Wayanad"
     />
   );
+}
+
+/* ============================================================
+   Style mutations — only ever called from the map's load event
+   ============================================================ */
+
+function installLayers(map: mapboxgl.Map, data: LayerData) {
+  map.addSource(SOURCES.hazard, { type: "geojson", data: data.hazard });
+  map.addSource(SOURCES.safe, { type: "geojson", data: data.safe });
+  map.addSource(SOURCES.habitation, {
+    type: "geojson",
+    data: data.habitation,
+  });
+
+  // Hazard polygons sit underneath the point layers.
+  map.addLayer({
+    id: LAYERS.hazardFill,
+    type: "fill",
+    source: SOURCES.hazard,
+    paint: {
+      "fill-color": mapExpressions.hazardColor as never,
+      "fill-opacity": mapExpressions.hazardOpacity as never,
+    },
+  });
+
+  map.addLayer({
+    id: LAYERS.hazardOutline,
+    type: "line",
+    source: SOURCES.hazard,
+    paint: {
+      "line-color": mapExpressions.hazardColor as never,
+      "line-width": 1.2,
+      "line-opacity": 0.9,
+    },
+  });
+
+  // Safe sites: blue, area scaled by capacity_max.
+  map.addLayer({
+    id: LAYERS.safeSites,
+    type: "circle",
+    source: SOURCES.safe,
+    paint: {
+      "circle-radius": ["get", "radius"],
+      "circle-color": "#3f8fd9",
+      "circle-opacity": 0.28,
+      "circle-stroke-color": "#5fa8ea",
+      "circle-stroke-width": 1.5,
+      "circle-stroke-opacity": 0.95,
+    },
+  });
+
+  // Habitations: colour ramped by priority_rank.
+  map.addLayer({
+    id: LAYERS.habitations,
+    type: "circle",
+    source: SOURCES.habitation,
+    paint: {
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        9,
+        3.5,
+        13,
+        6,
+        16,
+        9,
+      ],
+      "circle-color": mapExpressions.priorityColor as never,
+      "circle-stroke-color": "#0a0a0a",
+      "circle-stroke-width": 1,
+    },
+  });
+
+  // Selection ring, driven by the `selected` feature property.
+  map.addLayer({
+    id: LAYERS.habitationSelected,
+    type: "circle",
+    source: SOURCES.habitation,
+    filter: ["==", ["get", "selected"], true],
+    paint: {
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        9,
+        8,
+        13,
+        12,
+        16,
+        16,
+      ],
+      "circle-color": "rgba(0,0,0,0)",
+      "circle-stroke-color": "#d99b3f",
+      "circle-stroke-width": 2.5,
+    },
+  });
+}
+
+function installInteractions(
+  map: mapboxgl.Map,
+  popup: mapboxgl.Popup,
+  onSelectRef: { current: (id: string | null) => void },
+) {
+  const showPointer = () => {
+    map.getCanvas().style.cursor = "pointer";
+  };
+  const reset = () => {
+    map.getCanvas().style.cursor = "";
+    popup.remove();
+  };
+
+  map.on("click", LAYERS.habitations, (e) => {
+    const id = e.features?.[0]?.properties?.id;
+    if (typeof id === "string") onSelectRef.current(id);
+  });
+
+  // A bare-map click clears the selection.
+  map.on("click", (e) => {
+    const hits = map.queryRenderedFeatures(e.point, {
+      layers: [LAYERS.habitations],
+    });
+    if (hits.length === 0) onSelectRef.current(null);
+  });
+
+  map.on("mousemove", LAYERS.habitations, (e) => {
+    showPointer();
+    const p = e.features?.[0]?.properties;
+    if (!p) return;
+    popup
+      .setLngLat(e.lngLat)
+      .setHTML(
+        `<strong>${escapeHtml(String(p.name))}</strong><br/>` +
+          `<span style="color:#8a8a8a">Rank</span> ` +
+          `<span style="color:#d99b3f">#${p.priority_rank ?? "—"}</span> · ` +
+          `<span style="color:#8a8a8a">pop</span> ${Number(p.population).toLocaleString("en-IN")}`,
+      )
+      .addTo(map);
+  });
+  map.on("mouseleave", LAYERS.habitations, reset);
+
+  map.on("mousemove", LAYERS.safeSites, (e) => {
+    showPointer();
+    const p = e.features?.[0]?.properties;
+    if (!p) return;
+    popup
+      .setLngLat(e.lngLat)
+      .setHTML(
+        `<strong>${escapeHtml(String(p.name))}</strong><br/>` +
+          `<span style="color:#8a8a8a">capacity</span> ` +
+          `<span style="color:#5fa8ea">${Number(p.capacity_max).toLocaleString("en-IN")}</span>` +
+          (p.infra_score === null || p.infra_score === undefined
+            ? ""
+            : ` · <span style="color:#8a8a8a">infra</span> ${p.infra_score}`),
+      )
+      .addTo(map);
+  });
+  map.on("mouseleave", LAYERS.safeSites, reset);
+
+  map.on("mousemove", LAYERS.hazardFill, (e) => {
+    const p = e.features?.[0]?.properties;
+    if (!p) return;
+    const label = p.event_label
+      ? `<br/><em>${escapeHtml(String(p.event_label))}</em>`
+      : "";
+    popup
+      .setLngLat(e.lngLat)
+      .setHTML(
+        `<strong style="text-transform:capitalize">${escapeHtml(
+          String(p.hazard_type).replace(/_/g, " "),
+        )}</strong><br/>` +
+          `<span style="color:#8a8a8a">intensity</span> ` +
+          `<span style="color:#d99b3f">${p.intensity}/10</span>${label}`,
+      )
+      .addTo(map);
+  });
+  map.on("mouseleave", LAYERS.hazardFill, reset);
+}
+
+/**
+ * Update a source's data if that source exists on the current instance.
+ *
+ * Guarding on getSource rather than a readiness flag means a stale update
+ * aimed at a torn-down map is a no-op instead of a throw.
+ */
+function pushData(
+  map: mapboxgl.Map | null,
+  sourceId: string,
+  data: AnyCollection,
+) {
+  if (!map || !map.style || !map.isStyleLoaded()) return;
+
+  const source = map.getSource(sourceId);
+  if (!source || source.type !== "geojson") return;
+
+  source.setData(data as unknown as FeatureCollection);
 }
 
 function escapeHtml(value: string): string {
