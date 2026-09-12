@@ -30,7 +30,6 @@ import heroBg from "@/assets/raksha-hero-bg.jpg";
 import dashboardImg from "@/assets/raksha-dashboard.jpg";
 import explainabilityImg from "@/assets/raksha-explainability.jpg";
 import architectureImg from "@/assets/raksha-architecture.jpg";
-import logoAsset from "@/assets/logo.png.asset.json";
 
 const BAR_HEIGHTS = [
   23, 40, 53, 40, 33, 14, 7, 17, 75, 65,
@@ -248,7 +247,7 @@ function Hero() {
     <section className="relative w-full min-h-screen overflow-hidden bg-[#060B10]">
       <video
         className="absolute inset-0 w-full h-full object-cover"
-        src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260813_092641_de52eb87-daf2-41db-92cb-7a56eae012a5.mp4"
+        src="/hf_20260813_092641_de52eb87-daf2-41db-92cb-7a56eae012a5.mp4"
         poster={heroBg}
         autoPlay
         loop
@@ -286,24 +285,6 @@ function Hero() {
                     <BarChart3 className="w-4 h-4" />
                     Open Dashboard
                     <ArrowRight className="w-3.5 h-3.5" />
-                  </a>
-                  <a
-                    href="https://youtube.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 h-[46px] sm:h-[51px] px-5 sm:px-[27px] bg-[#E9E9E9] rounded-[12px] text-[#0A0707] text-[14px] sm:text-[15.5px] font-[450] leading-[15.5px] transition-opacity hover:opacity-90"
-                  >
-                    <Play className="w-4 h-4" />
-                    Watch Demo
-                  </a>
-                  <a
-                    href="https://github.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 h-[46px] sm:h-[51px] px-5 sm:px-[27px] rounded-[12px] border border-white text-white text-[14px] sm:text-[15.5px] font-[450] leading-[15.5px] transition-opacity hover:opacity-80"
-                  >
-                    <Github className="w-4 h-4" />
-                    View on GitHub
                   </a>
                 </div>
               </Animate>
@@ -727,7 +708,7 @@ function Footer() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <img
-              src={logoAsset.url}
+              src={"/logo.png"}
               alt="RAKSHA-REKHA emblem"
               className="w-10 h-10 rounded-full"
             />
@@ -783,7 +764,7 @@ function Nav() {
         <Animate delay={0} direction="down">
           <a href="#" className="flex items-center gap-3">
             <img
-              src={logoAsset.url}
+              src={"/logo.png"}
               alt="RAKSHA-REKHA emblem"
               className="w-9 h-9 sm:w-11 sm:h-11 rounded-full ring-1 ring-white/10"
             />
