@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { BacktestBanner } from "@/components/backtest-banner";
 import { BacktestToggle } from "@/components/backtest-toggle";
@@ -15,6 +15,7 @@ import { MapLegend } from "@/components/map-legend";
 import { PriorityList } from "@/components/priority-list";
 import type { SortKey } from "@/components/priority-list";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+import { captureMapImage, generateSdmaReport } from "@/lib/report";
 import type { DataSource } from "@/lib/supabase/types";
 
 // mapbox-gl touches window at construction time, so the map never renders on
@@ -33,6 +34,12 @@ const HazardMap = dynamic(
 
 /** Below md the map and list share the viewport, one at a time. */
 type MobileTab = "map" | "list";
+
+/**
+ * Minimal slice of the Mapbox map the report needs. Avoids importing mapbox-gl
+ * types into the shell, which would pull the library into this chunk.
+ */
+type MapHandle = { getCanvas: () => HTMLCanvasElement };
 
 export function DashboardShell() {
   const [source, setSource] = useState<DataSource>("synthetic");
@@ -54,6 +61,32 @@ export function DashboardShell() {
     () => view.ranked.filter((r) => r.detail.containingZones.length > 0).length,
     [view.ranked],
   );
+
+  /* ---------- SDMA PDF export ---------- */
+  const mapRef = useRef<MapHandle | null>(null);
+  const [reportState, setReportState] = useState<"idle" | "working" | "failed">(
+    "idle",
+  );
+
+  const exportReport = useCallback(async () => {
+    setReportState("working");
+    try {
+      await generateSdmaReport({
+        ranked: view.ranked,
+        safeSites: view.safeSites,
+        source,
+        eventLabel: view.eventLabel,
+        mapImage: captureMapImage(mapRef.current),
+        isSimulating: view.isSimulating,
+        intensityMultiplier,
+        hazardZoneCount: view.hazardZones.length,
+        lastComputedAt: view.lastComputedAt,
+      });
+      setReportState("idle");
+    } catch {
+      setReportState("failed");
+    }
+  }, [view, source, intensityMultiplier]);
 
   const clearSelection = useCallback(() => setSelectedId(null), []);
 
@@ -125,6 +158,20 @@ export function DashboardShell() {
               className="border-subtle-strong hover:border-amber hover:text-amber disabled:hover:border-subtle-strong text-muted rounded border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:text-muted"
             >
               {view.isRecomputing ? "Recomputing…" : "Recompute Scores"}
+            </button>
+
+            <button
+              type="button"
+              onClick={exportReport}
+              disabled={reportState === "working" || view.ranked.length === 0}
+              title="Export a one-page PDF with the current map view, the top 10 priority habitations, and the active dataset"
+              className="bg-amber/15 border-amber/40 text-amber hover:bg-amber/25 rounded border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {reportState === "working"
+                ? "Generating…"
+                : reportState === "failed"
+                  ? "Export failed — retry"
+                  : "Generate SDMA Report"}
             </button>
           </div>
         </div>
@@ -205,6 +252,9 @@ export function DashboardShell() {
                   selectedId={selectedId}
                   onSelect={setSelectedId}
                   intensityMultiplier={intensityMultiplier}
+                  onReady={(map) => {
+                    mapRef.current = map;
+                  }}
                 />
 
                 {/* Legend would crowd a phone viewport, so it starts at md. */}

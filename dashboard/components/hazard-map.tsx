@@ -56,6 +56,11 @@ interface HazardMapProps {
    * the existing colour/opacity expressions already read — no paint changes.
    */
   intensityMultiplier?: number;
+  /**
+   * Handed the map once its layers exist, so the PDF export can snapshot the
+   * canvas. Called with null on teardown.
+   */
+  onReady?: (map: mapboxgl.Map | null) => void;
 }
 
 export function HazardMap({
@@ -65,6 +70,7 @@ export function HazardMap({
   selectedId,
   onSelect,
   intensityMultiplier = 1,
+  onReady,
 }: HazardMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -84,6 +90,11 @@ export function HazardMap({
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
+
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
   const hazardData = useMemo(
     () =>
@@ -128,6 +139,13 @@ export function HazardMap({
       bounds: FALLBACK_BOUNDS,
       fitBoundsOptions: { padding: 48 },
       attributionControl: false,
+      /**
+       * Required for the SDMA PDF export. A WebGL drawing buffer is cleared
+       * after each frame, so getCanvas().toDataURL() returns a blank image
+       * unless the buffer is preserved. There is a modest memory and fill-rate
+       * cost, which is acceptable for a single full-screen map.
+       */
+      preserveDrawingBuffer: true,
     });
     mapRef.current = map;
 
@@ -155,11 +173,13 @@ export function HazardMap({
       installLayers(map, dataRef.current);
       installInteractions(map, popup, onSelectRef);
       setLayersReady(true);
+      onReadyRef.current?.(map);
     };
     map.on("load", onLoad);
 
     return () => {
       map.off("load", onLoad);
+      onReadyRef.current?.(null);
       popup.remove();
       // remove() tears down every listener and source on this instance.
       map.remove();
