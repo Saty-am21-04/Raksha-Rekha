@@ -64,7 +64,10 @@ export function DashboardShell() {
   }, [selectedId, clearSelection]);
 
   return (
-    <div className="flex h-dvh flex-col">
+    /* suppressHydrationWarning: browser extensions stamp bis_skin_checked onto
+       layout divs before React hydrates. Not an app bug — see the note in
+       app/layout.tsx. Covers this element's own attributes only. */
+    <div suppressHydrationWarning className="flex h-dvh flex-col">
       <header className="border-subtle bg-bg-raised flex shrink-0 items-center justify-between gap-3 border-b px-3 py-2.5 sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-baseline gap-2 sm:gap-3">
           <h1 className="shrink-0 text-sm font-semibold tracking-tight">

@@ -25,13 +25,36 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+/**
+ * suppressHydrationWarning on <html> and <body> is defensive, not a cover-up.
+ *
+ * Ad-blocker and security extensions mutate the DOM before React hydrates,
+ * stamping attributes onto elements they have scanned — we see bis_skin_checked,
+ * bis_register and __processed_<uuid>__ from extension
+ * eppiocemhmnlbhjplcgkofciiegomcon. React then compares its server HTML against
+ * an already-modified DOM and reports a mismatch that no application change can
+ * prevent.
+ *
+ * This app has no genuine hydration hazard: no typeof window branches, no
+ * Date.now()/Math.random(), and every number format pins an explicit "en-IN"
+ * locale so server and client render identical strings. Audited before adding
+ * this. Note the flag only covers attributes on the element it is set on, not
+ * descendants, so it silences the document-level noise without hiding a real
+ * mismatch inside the tree.
+ */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="bg-bg text-fg min-h-full flex flex-col">{children}</body>
+      <body
+        suppressHydrationWarning
+        className="bg-bg text-fg min-h-full flex flex-col"
+      >
+        {children}
+      </body>
     </html>
   );
 }
