@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+
+import { ExtensionNoiseFilter } from "@/components/extension-noise-filter";
+
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,12 +38,16 @@ export const viewport: Viewport = {
  * an already-modified DOM and reports a mismatch that no application change can
  * prevent.
  *
+ * These two elements are the whole of it now. The dashboard subtree, which the
+ * extension stamped on roughly 25 nested divs, is no longer server-rendered at
+ * all — see components/dashboard-client.tsx. That matters because this flag
+ * applies only to the element it is set on and never to descendants, so it could
+ * never have covered that tree.
+ *
  * This app has no genuine hydration hazard: no typeof window branches, no
  * Date.now()/Math.random(), and every number format pins an explicit "en-IN"
  * locale so server and client render identical strings. Audited before adding
- * this. Note the flag only covers attributes on the element it is set on, not
- * descendants, so it silences the document-level noise without hiding a real
- * mismatch inside the tree.
+ * this.
  */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -53,6 +60,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         suppressHydrationWarning
         className="bg-bg text-fg min-h-full flex flex-col"
       >
+        <ExtensionNoiseFilter />
         {children}
       </body>
     </html>

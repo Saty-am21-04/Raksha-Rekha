@@ -110,10 +110,11 @@ export function DashboardShell() {
   }, [selectedId, clearSelection]);
 
   return (
-    /* suppressHydrationWarning: browser extensions stamp bis_skin_checked onto
-       layout divs before React hydrates. Not an app bug — see the note in
-       app/layout.tsx. Covers this element's own attributes only. */
-    <div suppressHydrationWarning className="flex h-dvh flex-col">
+    /* No suppressHydrationWarning needed: this component is mounted with
+       ssr: false via DashboardClient, so it never hydrates against server HTML.
+       The flag used to sit here and did nothing for the ~25 nested divs that
+       extensions also stamp, since it does not apply to descendants. */
+    <div className="flex h-dvh flex-col">
       <header className="border-subtle bg-bg-raised flex shrink-0 items-center justify-between gap-3 border-b px-3 py-2.5 sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-baseline gap-2 sm:gap-3">
           <h1 className="shrink-0 text-sm font-semibold tracking-tight">
