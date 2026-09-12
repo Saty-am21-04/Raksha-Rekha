@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run verify:scoring && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync:scoring": "node scripts/sync-scoring.mjs",
+    "verify:scoring": "node scripts/sync-scoring.mjs --check"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.58.0",

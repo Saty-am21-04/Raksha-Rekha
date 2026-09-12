@@ -102,6 +102,18 @@ export function DashboardShell() {
               onChange={setSource}
             />
           </div>
+
+          <div className="border-subtle flex items-center gap-2 lg:border-l lg:pl-5">
+            <button
+              type="button"
+              onClick={view.recompute}
+              disabled={view.isRecomputing}
+              title="Run the compute-scores Edge Function and persist fresh rr_scores rows for this dataset"
+              className="border-subtle-strong hover:border-amber hover:text-amber disabled:hover:border-subtle-strong text-muted rounded border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:text-muted"
+            >
+              {view.isRecomputing ? "Recomputing…" : "Recompute Scores"}
+            </button>
+          </div>
         </div>
       </header>
 

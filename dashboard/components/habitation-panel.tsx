@@ -160,10 +160,10 @@ export function HabitationPanel({
         </div>
 
         {!usingPersistedScores && (
-          <p className="text-muted border-subtle border-t pt-3 text-[11px] leading-relaxed">
-            Scores derived in-app from rr_hazard_zones, rr_safe_sites and
-            rr_habitations. rr_scores is empty in this project, so no persisted
-            row exists yet.
+          <p className="text-amber/80 border-subtle border-t pt-3 text-[11px] leading-relaxed">
+            Simulated values. The hazard intensity multiplier is off its default,
+            so these scores were recomputed in the browser and are not saved to
+            rr_scores. Reset the slider to return to the persisted baseline.
           </p>
         )}
       </div>
