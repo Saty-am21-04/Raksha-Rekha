@@ -4,9 +4,10 @@
  * `rr_scores` is empty in the remote project and the dashboard holds a
  * read-only publishable key, so scores are derived here from the three tables
  * the anon role can read. Output deliberately matches the `rr_scores` row shape
- * so the panel and list can switch to server-side scores later without change
- * — see supabase/migrations/20260913002000_compute_rr_scores.sql for the SQL
- * equivalent.
+ * so the panel and list can switch to server-side scores without UI changes:
+ * populate rr_scores with an equivalent PostGIS pass (ST_Intersects for
+ * exposure, ST_Distance for the safe-site terms) and mergePersistedScores()
+ * will prefer those rows automatically. No such migration exists yet.
  *
  * Deriving scores in the app also makes Backtest Mode meaningful: swapping the
  * hazard source recomputes every score against that dataset, rather than
