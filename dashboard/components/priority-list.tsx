@@ -70,7 +70,7 @@ export function PriorityList({
   const total = ranked.length;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <div className="border-subtle bg-panel shrink-0 border-b px-3 py-2.5">
         <div className="flex items-baseline justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-wide">

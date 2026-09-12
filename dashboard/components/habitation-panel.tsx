@@ -32,7 +32,9 @@ export function HabitationPanel({
   return (
     <section
       aria-label={`Risk breakdown for ${habitation.name}`}
-      className="flex h-full flex-col overflow-y-auto"
+      /* min-h-0 + flex-1 lets this scroll inside both the mobile bottom sheet
+         (height capped by max-h) and the full-height desktop rail. */
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto"
     >
       {/* header */}
       <header className="border-subtle bg-panel sticky top-0 z-10 flex items-start justify-between gap-3 border-b px-4 py-3">
