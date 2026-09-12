@@ -13,6 +13,13 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
+    /**
+     * mapbox-gl@3 depends on @types/mapbox__point-geometry, a deprecated stub
+     * that ships no declaration file, which breaks TS's automatic inclusion of
+     * every folder under node_modules/@types. Listing types explicitly keeps
+     * that stub out; packages imported directly still resolve their own types.
+     */
+    "types": ["node"],
     "plugins": [
       {
         "name": "next"

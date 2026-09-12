@@ -1,26 +1,149 @@
 @import "tailwindcss";
+@import "mapbox-gl/dist/mapbox-gl.css";
 
+/* ============================================================
+   RAKSHA-REKHA design tokens
+   Dark/black surfaces, single amber accent.
+   ============================================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces: page shell darkest, panels one step up */
+  --rr-bg: #0a0a0a;
+  --rr-bg-raised: #111111;
+  --rr-panel: #1a1a1a;
+  --rr-panel-hover: #202020;
+  --rr-border: #262626;
+  --rr-border-strong: #333333;
+
+  /* Text */
+  --rr-text: #e8e8e8;
+  --rr-text-muted: #8a8a8a;
+
+  /* Single accent — amber */
+  --rr-amber: #d99b3f;
+  --rr-amber-dim: #6b4d20;
+  --rr-amber-bright: #f0b355;
+
+  /* Hazard intensity ramp: dim amber (low) -> bright amber -> red (high) */
+  --rr-hazard-1: #4a3316;
+  --rr-hazard-4: #a8752f;
+  --rr-hazard-7: #d99b3f;
+  --rr-hazard-9: #e2652f;
+  --rr-hazard-10: #d93f3f;
+
+  /* Safe sites read as blue against the amber hazard palette */
+  --rr-safe: #3f8fd9;
+  --rr-safe-bright: #5fa8ea;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--rr-bg);
+  --color-bg-raised: var(--rr-bg-raised);
+  --color-panel: var(--rr-panel);
+  --color-panel-hover: var(--rr-panel-hover);
+  --color-subtle: var(--rr-border);
+  --color-subtle-strong: var(--rr-border-strong);
+
+  --color-fg: var(--rr-text);
+  --color-muted: var(--rr-text-muted);
+
+  --color-amber: var(--rr-amber);
+  --color-amber-dim: var(--rr-amber-dim);
+  --color-amber-bright: var(--rr-amber-bright);
+
+  --color-safe: var(--rr-safe);
+  --color-safe-bright: var(--rr-safe-bright);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--rr-bg);
+  color: var(--rr-text);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /* Prevent iOS rubber-banding from revealing white behind the app shell */
+  overscroll-behavior: none;
+}
+
+/* Thin dark scrollbars so panels don't get bright OS chrome */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rr-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--rr-border-strong);
+  border-radius: 4px;
+}
+
+/* Keyboard focus stays visible and on-theme */
+:focus-visible {
+  outline: 2px solid var(--rr-amber);
+  outline-offset: 2px;
+}
+
+/* ---------- Mapbox chrome retheme ---------- */
+.mapboxgl-ctrl-group {
+  background: var(--rr-panel) !important;
+  border: 1px solid var(--rr-border) !important;
+  box-shadow: none !important;
+}
+
+.mapboxgl-ctrl-group button + button {
+  border-top: 1px solid var(--rr-border) !important;
+}
+
+.mapboxgl-ctrl-group button .mapboxgl-ctrl-icon {
+  filter: invert(88%) sepia(6%) saturate(120%) brightness(105%);
+}
+
+.mapboxgl-ctrl-group button:hover {
+  background: var(--rr-panel-hover) !important;
+}
+
+.mapboxgl-ctrl-attrib {
+  background: rgba(10, 10, 10, 0.75) !important;
+}
+
+.mapboxgl-ctrl-attrib a {
+  color: var(--rr-text-muted) !important;
+}
+
+.mapboxgl-popup-content {
+  background: var(--rr-panel) !important;
+  color: var(--rr-text) !important;
+  border: 1px solid var(--rr-border) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+  padding: 10px 12px !important;
+  font-size: 12px;
+}
+
+.mapboxgl-popup-tip {
+  border-top-color: var(--rr-panel) !important;
+  border-bottom-color: var(--rr-panel) !important;
+}
+
+.mapboxgl-popup-close-button {
+  color: var(--rr-text-muted) !important;
+  font-size: 16px !important;
+  padding: 0 6px !important;
+}
+
+.mapboxgl-popup-close-button:hover {
+  background: transparent !important;
+  color: var(--rr-amber) !important;
 }
