@@ -22,45 +22,101 @@ export interface BaseData {
   habitations: Habitation[];
 }
 
+/**
+ * Log the failing table, the exact column list, and the full PostgREST error
+ * before throwing.
+ *
+ * A Supabase error object carries message/details/hint/code, and only `message`
+ * survives into an Error — the other three are usually where the real cause is
+ * (a missing column, an RLS denial, a bad filter). Printing the object keeps
+ * that visible in the console instead of collapsing to a generic UI error.
+ */
+function reportQueryError(
+  table: string,
+  columns: string,
+  error: {
+    message: string;
+    details?: string | null;
+    hint?: string | null;
+    code?: string | null;
+  },
+): never {
+  console.error(`[data] query failed on ${table}`, {
+    table,
+    columns,
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+    error,
+  });
+
+  const extra = [error.code && `code ${error.code}`, error.hint, error.details]
+    .filter(Boolean)
+    .join(" · ");
+
+  throw new Error(
+    `Reading ${table} failed: ${error.message}${extra ? ` (${extra})` : ""}`,
+  );
+}
+
+const ZONE_COLUMNS =
+  "id, geom, hazard_type, intensity, source, event_label, metadata, created_at";
+const SITE_COLUMNS = "id, geom, name, capacity_max, infra_score, created_at";
+const HABITATION_COLUMNS = "id, geom, name, population, created_at";
+const SCORE_COLUMNS =
+  "id, habitation_id, hazard_score, capacity_score, priority_rank, factor_breakdown, nearest_safe_site_id, source, computed_at";
+
 export async function fetchBaseData(): Promise<BaseData> {
   const [zones, sites, habitations] = await Promise.all([
     supabase
       .from("rr_hazard_zones")
-      .select(
-        "id, geom, hazard_type, intensity, source, event_label, metadata, created_at",
-      )
+      .select(ZONE_COLUMNS)
       .order("intensity", { ascending: false }),
     supabase
       .from("rr_safe_sites")
-      .select("id, geom, name, capacity_max, infra_score, created_at")
+      .select(SITE_COLUMNS)
       .order("capacity_max", { ascending: false }),
-    supabase
-      .from("rr_habitations")
-      .select("id, geom, name, population, created_at")
-      .order("name"),
+    supabase.from("rr_habitations").select(HABITATION_COLUMNS).order("name"),
   ]);
 
-  const failure = zones.error ?? sites.error ?? habitations.error;
-  if (failure) throw new Error(`Supabase read failed: ${failure.message}`);
+  // Reported per table so a single failing column list is identifiable.
+  if (zones.error) reportQueryError("rr_hazard_zones", ZONE_COLUMNS, zones.error);
+  if (sites.error) reportQueryError("rr_safe_sites", SITE_COLUMNS, sites.error);
+  if (habitations.error) {
+    reportQueryError("rr_habitations", HABITATION_COLUMNS, habitations.error);
+  }
 
-  return {
+  const result = {
     hazardZones: zones.data ?? [],
     safeSites: sites.data ?? [],
     habitations: habitations.data ?? [],
   };
+
+  console.info("[data] base tables loaded", {
+    hazardZones: result.hazardZones.length,
+    safeSites: result.safeSites.length,
+    habitations: result.habitations.length,
+  });
+
+  return result;
 }
 
 /** Persisted scores for one hazard dataset, ordered by rank. */
 export async function fetchScores(source: DataSource): Promise<Score[]> {
   const { data, error } = await supabase
     .from("rr_scores")
-    .select(
-      "id, habitation_id, hazard_score, capacity_score, priority_rank, factor_breakdown, nearest_safe_site_id, source, computed_at",
-    )
+    .select(SCORE_COLUMNS)
     .eq("source", source)
     .order("priority_rank", { ascending: true });
 
-  if (error) throw new Error(`Reading rr_scores failed: ${error.message}`);
+  if (error) {
+    reportQueryError(`rr_scores (source=${source})`, SCORE_COLUMNS, error);
+  }
+
+  console.info(`[data] rr_scores loaded for source=${source}`, {
+    rows: data?.length ?? 0,
+  });
   return data ?? [];
 }
 
@@ -74,21 +130,59 @@ export interface RecomputeResult {
 /**
  * Trigger the compute-scores Edge Function, which upserts rr_scores.
  *
- * The dashboard's key is read-only, so this is the only path that can write
- * scores — the function runs with the service-role key server-side. Omitting
- * `source` recomputes both datasets in one call.
+ * Routed through /api/recompute rather than supabase.functions.invoke for two
+ * reasons:
+ *
+ *   1. The function is guarded by RR_COMPUTE_SECRET, which a browser cannot
+ *      hold. The server-side route attaches it.
+ *   2. functions.invoke reports any non-2xx as the literal string "Edge
+ *      Function returned a non-2xx status code" and buries the real body on
+ *      error.context, so the actual cause never reaches the UI. The proxy
+ *      relays the body verbatim and this reads it.
+ *
+ * Omitting `source` recomputes both datasets.
  */
 export async function recomputeScores(
   source?: DataSource,
 ): Promise<RecomputeResult> {
-  const { data, error } = await supabase.functions.invoke<RecomputeResult>(
-    "compute-scores",
-    { body: source ? { source } : {} },
-  );
+  const response = await fetch("/api/recompute", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(source ? { source } : {}),
+  });
 
-  if (error) throw new Error(`Recompute failed: ${error.message}`);
-  if (!data?.ok) throw new Error("Recompute returned an unsuccessful response.");
-  return data;
+  const text = await response.text();
+  let payload: (RecomputeResult & { error?: string; hint?: string }) | null =
+    null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    console.error("[data] recompute failed", {
+      status: response.status,
+      statusText: response.statusText,
+      payload,
+      rawBody: payload ? undefined : text.slice(0, 500),
+    });
+
+    const detail =
+      payload?.error ?? text.slice(0, 300) ?? response.statusText ?? "no body";
+    const hint = payload?.hint ? ` — ${payload.hint}` : "";
+    throw new Error(`Recompute failed (HTTP ${response.status}): ${detail}${hint}`);
+  }
+
+  if (!payload?.ok) {
+    console.error("[data] recompute returned ok=false", { payload });
+    throw new Error(
+      `Recompute did not succeed: ${payload?.error ?? "unexpected response shape"}`,
+    );
+  }
+
+  console.info("[data] recompute succeeded", payload);
+  return payload;
 }
 
 /** Hazard zones belonging to one dataset. */

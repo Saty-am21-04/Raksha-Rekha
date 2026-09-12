@@ -21,7 +21,17 @@ export const BASELINE_MULTIPLIER = 1;
 
 export interface DashboardView {
   status: "loading" | "ready" | "error";
+  /**
+   * Fatal load failure only. Reaching this means there is nothing to render.
+   * A failed recompute is NOT reported here — see actionError.
+   */
   error: string | null;
+  /**
+   * Non-fatal failure from a user action, such as a rejected recompute. Shown
+   * as a banner while the already-loaded dashboard stays on screen.
+   */
+  actionError: string | null;
+  dismissActionError: () => void;
   /** Hazard zones for the active source only. */
   hazardZones: HazardZone[];
   safeSites: SafeSite[];
@@ -60,7 +70,14 @@ export function useDashboardData(
 ): DashboardView {
   const [base, setBase] = useState<BaseData | null>(null);
   const [scores, setScores] = useState<Record<string, Score[]>>({});
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * Kept apart deliberately. These were one piece of state, and because the
+   * memo bails out with empty data on any error, a single failed recompute
+   * blanked the header to 0/0/0 even though the base tables had loaded fine.
+   * A rejected action must never discard loaded data.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isRecomputing, setIsRecomputing] = useState(false);
 
   /** Datasets we've already auto-triggered, so an empty result can't loop. */
@@ -82,7 +99,7 @@ export function useDashboardData(
       })
       .catch((err: unknown) => {
         if (!cancelled.current) {
-          setError(err instanceof Error ? err.message : "Unknown error");
+          setLoadError(err instanceof Error ? err.message : "Unknown error");
         }
       });
   }, []);
@@ -98,13 +115,16 @@ export function useDashboardData(
   const runRecompute = useCallback(
     async (which: DataSource) => {
       setIsRecomputing(true);
-      setError(null);
+      setActionError(null);
       try {
         await recomputeScores(which);
         await loadScores(which);
       } catch (err: unknown) {
         if (!cancelled.current) {
-          setError(err instanceof Error ? err.message : "Recompute failed");
+          // Non-fatal: whatever is already loaded stays on screen.
+          setActionError(
+            err instanceof Error ? err.message : "Recompute failed",
+          );
         }
       } finally {
         if (!cancelled.current) setIsRecomputing(false);
@@ -128,7 +148,7 @@ export function useDashboardData(
       })
       .catch((err: unknown) => {
         if (!cancelled.current) {
-          setError(err instanceof Error ? err.message : "Unknown error");
+          setLoadError(err instanceof Error ? err.message : "Unknown error");
         }
       });
   }, [source, scores, loadScores, runRecompute]);
@@ -137,12 +157,16 @@ export function useDashboardData(
     void runRecompute(source);
   }, [runRecompute, source]);
 
+  const dismissActionError = useCallback(() => setActionError(null), []);
+
   return useMemo(() => {
     const isSimulating = intensityMultiplier !== BASELINE_MULTIPLIER;
 
     const empty: DashboardView = {
-      status: error ? "error" : "loading",
-      error,
+      status: loadError ? "error" : "loading",
+      error: loadError,
+      actionError,
+      dismissActionError,
       hazardZones: [],
       safeSites: [],
       ranked: [],
@@ -156,7 +180,9 @@ export function useDashboardData(
       recompute,
     };
 
-    if (error) return empty;
+    // Only a fatal load failure blanks the view. actionError falls through so a
+    // rejected recompute leaves the loaded dashboard intact.
+    if (loadError) return empty;
     if (!base) return empty;
 
     const activeZones = zonesForSource(base.hazardZones, source);
@@ -176,6 +202,8 @@ export function useDashboardData(
       isSimulating,
       isRecomputing,
       recompute,
+      actionError,
+      dismissActionError,
     };
 
     if (isSimulating) {
@@ -222,7 +250,9 @@ export function useDashboardData(
     base,
     scores,
     source,
-    error,
+    loadError,
+    actionError,
+    dismissActionError,
     isRecomputing,
     intensityMultiplier,
     recompute,
