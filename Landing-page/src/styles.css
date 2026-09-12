@@ -139,6 +139,8 @@
 
   html {
     background-color: #060B10;
+    margin: 0;
+    padding: 0;
   }
 
   body {
@@ -147,6 +149,9 @@
     font-family: "Suisse Intl", -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
   }
 }
 
