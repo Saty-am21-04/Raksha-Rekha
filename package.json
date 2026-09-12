@@ -1,0 +1,12 @@
+{
+  "name": "raksha-rekha",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n landing,dashboard -c cyan,amber \"cd Landing-page && bun run dev\" \"cd dashboard && npm run dev\"",
+    "dev:landing": "cd Landing-page && bun run dev",
+    "dev:dashboard": "cd dashboard && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

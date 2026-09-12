@@ -280,6 +280,14 @@ function Hero() {
               <Animate delay={750} direction="up">
                 <div className="flex flex-wrap gap-3 sm:gap-4">
                   <a
+                    href="http://localhost:3001"
+                    className="inline-flex items-center gap-2 h-[46px] sm:h-[51px] px-5 sm:px-[27px] bg-[rgba(17,16,15,0.45)] backdrop-blur-[20px] rounded-[12px] border border-amber-500/30 text-amber-300 text-[14px] sm:text-[15.5px] font-[450] leading-[15.5px] transition-all hover:bg-amber-500/10 hover:border-amber-400/50 hover:text-amber-200 hover:shadow-[0_0_24px_rgba(245,158,11,0.15)]"
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    Open Dashboard
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
+                  <a
                     href="https://youtube.com"
                     target="_blank"
                     rel="noreferrer"
@@ -802,6 +810,13 @@ function Nav() {
         <Animate delay={200} direction="down" className="hidden lg:block">
           <div className="h-[52px] p-[3px] bg-[rgba(0,0,0,0.35)] rounded-[13px] backdrop-blur-[17px] flex items-center gap-[5px]">
             <a
+              href="http://localhost:3001"
+              className="h-[46px] px-6 rounded-[11px] text-amber-300 text-[14px] font-[450] leading-[14px] hover:bg-amber-500/10 transition-colors flex items-center gap-2 border border-amber-500/20"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Dashboard
+            </a>
+            <a
               href="https://github.com"
               target="_blank"
               rel="noreferrer"
@@ -868,6 +883,14 @@ function Nav() {
             className={`flex flex-col gap-3 transition-all duration-300 ${isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
             style={{ transitionDelay: isOpen ? "350ms" : "0ms" }}
           >
+            <a
+              href="http://localhost:3001"
+              className="w-full h-[50px] rounded-[12px] bg-[rgba(17,16,15,0.45)] backdrop-blur-[20px] border border-amber-500/30 text-amber-300 text-[15px] font-[450] transition-all hover:bg-amber-500/10 hover:border-amber-400/50 flex items-center justify-center gap-2"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Open Dashboard
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
             <a
               href="https://youtube.com"
               target="_blank"
