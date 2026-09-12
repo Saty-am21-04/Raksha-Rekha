@@ -3,6 +3,8 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { BacktestBanner } from "@/components/backtest-banner";
+import { BacktestToggle } from "@/components/backtest-toggle";
 import { HabitationPanel } from "@/components/habitation-panel";
 import { MapLegend } from "@/components/map-legend";
 import { PriorityList } from "@/components/priority-list";
@@ -25,7 +27,7 @@ const HazardMap = dynamic(
 );
 
 export function DashboardShell() {
-  const [source] = useState<DataSource>("synthetic");
+  const [source, setSource] = useState<DataSource>("synthetic");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("rank");
 
@@ -58,21 +60,39 @@ export function DashboardShell() {
           <p className="text-muted text-xs">Wayanad, Kerala</p>
         </div>
 
-        <dl className="text-muted flex items-center gap-4 text-xs">
-          <div className="flex items-center gap-1.5">
-            <dt>Hazard zones</dt>
-            <dd className="text-fg font-mono">{view.hazardZones.length}</dd>
+        <div className="flex items-center gap-5">
+          <dl className="text-muted flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-1.5">
+              <dt>Hazard zones</dt>
+              <dd className="text-fg font-mono">{view.hazardZones.length}</dd>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <dt>Safe sites</dt>
+              <dd className="text-fg font-mono">{view.safeSites.length}</dd>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <dt>Habitations</dt>
+              <dd className="text-fg font-mono">{view.ranked.length}</dd>
+            </div>
+          </dl>
+
+          <div className="border-subtle border-l pl-5">
+            <BacktestToggle
+              source={source}
+              counts={view.sourceCounts}
+              onChange={setSource}
+            />
           </div>
-          <div className="flex items-center gap-1.5">
-            <dt>Safe sites</dt>
-            <dd className="text-fg font-mono">{view.safeSites.length}</dd>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <dt>Habitations</dt>
-            <dd className="text-fg font-mono">{view.ranked.length}</dd>
-          </div>
-        </dl>
+        </div>
       </header>
+
+      {source === "historical" && (
+        <BacktestBanner
+          eventLabel={view.eventLabel}
+          zoneCount={view.hazardZones.length}
+          onExit={() => setSource("synthetic")}
+        />
+      )}
 
       {view.status === "error" ? (
         <div className="flex flex-1 items-center justify-center p-6">
