@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { HabitationPanel } from "@/components/habitation-panel";
 import { MapLegend } from "@/components/map-legend";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { DataSource } from "@/lib/supabase/types";
@@ -26,6 +27,23 @@ export function DashboardShell() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const view = useDashboardData(source);
+
+  const selected = useMemo(
+    () => view.ranked.find((r) => r.id === selectedId) ?? null,
+    [view.ranked, selectedId],
+  );
+
+  const clearSelection = useCallback(() => setSelectedId(null), []);
+
+  // Escape closes the panel.
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, clearSelection]);
 
   return (
     <div className="flex h-dvh flex-col">
@@ -53,15 +71,15 @@ export function DashboardShell() {
         </dl>
       </header>
 
-      <main className="relative flex-1">
-        {view.status === "error" ? (
-          <div className="flex h-full items-center justify-center p-6">
-            <p className="border-subtle bg-panel max-w-md rounded-lg border p-4 text-sm text-red-400">
-              {view.error}
-            </p>
-          </div>
-        ) : (
-          <>
+      {view.status === "error" ? (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <p className="border-subtle bg-panel max-w-md rounded-lg border p-4 text-sm text-red-400">
+            {view.error}
+          </p>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <main className="relative min-w-0 flex-1">
             <HazardMap
               hazardZones={view.hazardZones}
               safeSites={view.safeSites}
@@ -79,9 +97,20 @@ export function DashboardShell() {
                 Loading Wayanad dataset…
               </div>
             )}
-          </>
-        )}
-      </main>
+          </main>
+
+          {selected && (
+            <aside className="border-subtle bg-panel w-80 shrink-0 border-l">
+              <HabitationPanel
+                habitation={selected}
+                total={view.ranked.length}
+                usingPersistedScores={view.usingPersistedScores}
+                onClose={clearSelection}
+              />
+            </aside>
+          )}
+        </div>
+      )}
     </div>
   );
 }
